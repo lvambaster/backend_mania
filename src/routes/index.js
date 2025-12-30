@@ -269,45 +269,53 @@ routes.get('/totais', async (req, res) => {
 // ==============================
 // 💰 TOTAIS — MOTOQUEIRO LOGADO
 // ==============================
-router.get("/totais/me", async (req, res) => {
-  const motoqueiroId = req.user.id;
-  const { inicio, fim } = req.query;
-
-  const where = { MotoqueiroId: motoqueiroId };
-
-  if (inicio && fim) {
-    where.data = {
-      [Op.between]: [inicio, fim]
-    };
-  }
-
+routes.get("/totais/me", async (req, res) => {
   try {
-    const totais = await Lancamento.findAll({
+    const { inicio, fim } = req.query;
+
+    const where = {
+      MotoqueiroId: req.user.id
+    };
+
+    if (inicio && fim) {
+      where.data = {
+        [Op.between]: [inicio, fim]
+      };
+    }
+
+    const lancamentos = await Lancamento.findAll({
+      where,
       attributes: [
         "data",
-        [fn("SUM", col("diaria")), "total_diaria"],
-        [fn("SUM", col("taxa")), "total_taxa"],
+        [fn("SUM", col("diaria")), "diaria"],
+        [fn("SUM", col("taxa")), "taxa"],
         [fn("SUM", col("qtd_entregas")), "qtd_entregas"],
-        [fn("SUM", col("qtd_taxas_acima_10")), "qtd_taxas_acima_10"]
+        [fn("SUM", col("qtd_taxas_acima_10")), "qtd_taxas_acima_10"],
+        [fn("SUM", col("vales")), "vales"]
       ],
-      where,
       group: ["data"],
       order: [["data", "ASC"]]
     });
 
-    const formatado = totais.map(t => ({
-      data: t.data,
-      total:
-        Number(t.getDataValue("total_diaria")) +
-        Number(t.getDataValue("total_taxa")),
-      qtd_entregas: Number(t.getDataValue("qtd_entregas")),
-      qtd_taxas_acima_10: Number(t.getDataValue("qtd_taxas_acima_10"))
-    }));
+    const resultado = lancamentos.map(l => {
+      const diaria = Number(l.getDataValue("diaria")) || 0;
+      const taxa = Number(l.getDataValue("taxa")) || 0;
+      const entregas = Number(l.getDataValue("qtd_entregas")) || 0;
+      const taxas10 = Number(l.getDataValue("qtd_taxas_acima_10")) || 0;
+      const vales = Number(l.getDataValue("vales")) || 0;
 
-    res.json(formatado);
+      return {
+        data: l.data,
+        total: diaria + taxa + taxas10 - entregas - vales,
+        qtd_entregas: entregas,
+        qtd_taxas_acima_10: taxas10
+      };
+    });
+
+    res.json(resultado);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ erro: "Erro ao buscar totais" });
+    res.status(500).json({ erro: "Erro ao buscar dados do dashboard" });
   }
 });
 // ==============================
