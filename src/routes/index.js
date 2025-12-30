@@ -267,7 +267,7 @@ routes.get('/totais', async (req, res) => {
 })
 
 // ==============================
-// 💰 TOTAIS — MOTOQUEIRO LOGADO (CORRIGIDO)
+// 💰 TOTAIS — MOTOQUEIRO LOGADO
 // ==============================
 routes.get("/totais/me", async (req, res) => {
   try {
@@ -277,19 +277,23 @@ routes.get("/totais/me", async (req, res) => {
       MotoqueiroId: req.user.id
     };
 
-    // 📅 FILTRO OU ÚLTIMOS 7 DIAS
+    // 📅 DATA PADRÃO → ÚLTIMOS 7 DIAS
     if (inicio && fim) {
       where.data = {
         [Op.between]: [inicio, fim]
       };
     } else {
+      const hoje = new Date();
+      const seteDiasAtras = new Date();
+      seteDiasAtras.setDate(hoje.getDate() - 6);
+
       where.data = {
-        [Op.gte]: moment().subtract(6, "days").format("YYYY-MM-DD")
+        [Op.gte]: seteDiasAtras.toISOString().split("T")[0]
       };
     }
 
-    // 🔹 BUSCA TODOS OS TOTAIS
-    const totais = await Total.findAll({
+    // 🔹 BUSCA TODOS OS LANÇAMENTOS
+    const lancamentos = await Lancamento.findAll({
       where,
       order: [["data", "ASC"]]
     });
@@ -297,35 +301,31 @@ routes.get("/totais/me", async (req, res) => {
     // 🔹 AGRUPA POR DATA (SEM SOMAR)
     const mapa = {};
 
-    totais.forEach(t => {
-      const data = t.data;
+    lancamentos.forEach(l => {
+      const data = l.data;
 
-      // se ainda não existe, cria
       if (!mapa[data]) {
         mapa[data] = {
           data,
-          total: Number(t.total),
-          qtd_entregas: Number(t.qtd_entregas),
-          qtd_taxas_acima_10: Number(t.qtd_taxas_acima_10),
-          pago: Boolean(t.pago)
+          total: Number(l.total),
+          qtd_entregas: Number(l.qtd_entregas),
+          qtd_taxas_acima_10: Number(l.qtd_taxas_acima_10),
+          pago: Boolean(l.pago)
         };
       } else {
-        // 🔥 REGRA DO PAGO
-        if (t.pago === true) {
+        // ✔️ REGRA DO PAGO
+        if (l.pago === true) {
           mapa[data].pago = true;
         }
       }
     });
 
-    const resultado = Object.values(mapa);
-
-    res.json(resultado);
+    res.json(Object.values(mapa));
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ erro: "Erro no dashboard" });
+    console.error("ERRO TOTAIS:", err);
+    res.status(500).json({ erro: "Erro ao buscar totais" });
   }
 });
-
 
 // ==============================
 // 💸 MARCAR COMO PAGO (ADMIN)
