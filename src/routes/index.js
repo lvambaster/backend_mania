@@ -273,27 +273,18 @@ routes.get("/totais/me", async (req, res) => {
   try {
     const { inicio, fim } = req.query;
 
-    const whereLancamento = {
-      MotoqueiroId: req.user.id
-    };
-
-    const whereTotal = {
+    const where = {
       MotoqueiroId: req.user.id
     };
 
     if (inicio && fim) {
-      whereLancamento.data = {
-        [Op.between]: [inicio, fim]
-      };
-
-      whereTotal.data = {
+      where.data = {
         [Op.between]: [inicio, fim]
       };
     }
 
-    // 🔹 AGRUPA DADOS DOS LANÇAMENTOS
     const lancamentos = await Lancamento.findAll({
-      where: whereLancamento,
+      where,
       attributes: [
         "data",
         [fn("SUM", col("diaria")), "diaria"],
@@ -306,19 +297,6 @@ routes.get("/totais/me", async (req, res) => {
       order: [["data", "ASC"]]
     });
 
-    // 🔹 BUSCA STATUS DE PAGAMENTO
-    const totais = await Total.findAll({
-      where: whereTotal,
-      attributes: ["data", "pago"]
-    });
-
-    // 🔹 MAPA PARA ACESSO RÁPIDO
-    const mapaPago = {};
-    totais.forEach(t => {
-      mapaPago[t.data] = t.pago;
-    });
-
-    // 🔹 RESULTADO FINAL
     const resultado = lancamentos.map(l => {
       const diaria = Number(l.getDataValue("diaria")) || 0;
       const taxa = Number(l.getDataValue("taxa")) || 0;
@@ -330,8 +308,7 @@ routes.get("/totais/me", async (req, res) => {
         data: l.data,
         total: diaria + taxa + taxas10 - entregas - vales,
         qtd_entregas: entregas,
-        qtd_taxas_acima_10: taxas10,
-        pago: mapaPago[l.data] ?? false
+        qtd_taxas_acima_10: taxas10
       };
     });
 
