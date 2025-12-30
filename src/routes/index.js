@@ -267,65 +267,74 @@ routes.get('/totais', async (req, res) => {
 })
 
 // ==============================
-// 💰 TOTAIS — MOTOQUEIRO LOGADO
+// 💰 TOTAIS — MOTOQUEIRO LOGADO (CORRIGIDO)
 // ==============================
 routes.get("/totais/me", async (req, res) => {
   try {
     const { inicio, fim } = req.query;
 
-    const where = {
+    const whereTotal = {
       MotoqueiroId: req.user.id
     };
 
-    // 📅 DATA PADRÃO → ÚLTIMOS 7 DIAS
     if (inicio && fim) {
-      where.data = {
+      whereTotal.data = {
         [Op.between]: [inicio, fim]
-      };
-    } else {
-      const hoje = new Date();
-      const seteDiasAtras = new Date();
-      seteDiasAtras.setDate(hoje.getDate() - 6);
-
-      where.data = {
-        [Op.gte]: seteDiasAtras.toISOString().split("T")[0]
       };
     }
 
-    // 🔹 BUSCA TODOS OS LANÇAMENTOS
-    const lancamentos = await Lancamento.findAll({
-      where,
+    // 🔹 1. BUSCA TOTAIS (VALOR + PAGO)
+    const totais = await Total.findAll({
+      where: whereTotal,
+      attributes: ["data", "total", "pago"],
       order: [["data", "ASC"]]
     });
 
-    // 🔹 AGRUPA POR DATA (SEM SOMAR)
-    const mapa = {};
-
-    lancamentos.forEach(l => {
-      const data = l.data;
-
-      if (!mapa[data]) {
-        mapa[data] = {
-          data,
-          total: Number(l.total),
-          qtd_entregas: Number(l.qtd_entregas),
-          qtd_taxas_acima_10: Number(l.qtd_taxas_acima_10),
-          pago: Boolean(l.pago)
-        };
-      } else {
-        // ✔️ REGRA DO PAGO
-        if (l.pago === true) {
-          mapa[data].pago = true;
-        }
-      }
+    // 🔹 2. BUSCA LANÇAMENTOS (SÓ MÉTRICAS)
+    const lancamentos = await Lancamento.findAll({
+      where: {
+        MotoqueiroId: req.user.id
+      },
+      attributes: [
+        "data",
+        [fn("SUM", col("qtd_entregas")), "qtd_entregas"],
+        [fn("SUM", col("qtd_taxas_acima_10")), "qtd_taxas_acima_10"]
+      ],
+      group: ["data"]
     });
 
-    res.json(Object.values(mapa));
+    // 🔹 3. MAPA DE MÉTRICAS POR DATA
+    const mapaLancamentos = {};
+    lancamentos.forEach(l => {
+      const data = l.data;
+      mapaLancamentos[data] = {
+        qtd_entregas: Number(l.getDataValue("qtd_entregas")) || 0,
+        qtd_taxas_acima_10:
+          Number(l.getDataValue("qtd_taxas_acima_10")) || 0
+      };
+    });
+
+    // 🔹 4. RESULTADO FINAL (SEM DUPLICAR)
+    const resultado = totais.map(t => {
+      const data = t.data;
+
+      return {
+        data,
+        total: Number(t.total),
+        pago: t.pago,
+        qtd_entregas: mapaLancamentos[data]?.qtd_entregas || 0,
+        qtd_taxas_acima_10:
+          mapaLancamentos[data]?.qtd_taxas_acima_10 || 0
+      };
+    });
+
+    res.json(resultado);
   } catch (err) {
-    console.error("ERRO TOTAIS:", err);
-    res.status(500).json({ erro: "Erro ao buscar totais" });
+    console.error(err);
+    res.status(500).json({ erro: "Erro ao buscar dados do dashboard" });
   }
 });
+
 
 // ==============================
 // 💸 MARCAR COMO PAGO (ADMIN)
