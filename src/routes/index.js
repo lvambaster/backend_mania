@@ -283,6 +283,7 @@ routes.get("/totais/me", async (req, res) => {
       };
     }
 
+    // 🔹 BUSCA LANÇAMENTOS AGRUPADOS
     const lancamentos = await Lancamento.findAll({
       where,
       attributes: [
@@ -297,6 +298,25 @@ routes.get("/totais/me", async (req, res) => {
       order: [["data", "ASC"]]
     });
 
+    // 🔹 BUSCA STATUS DE PAGAMENTO
+    const totais = await Total.findAll({
+      where: {
+        MotoqueiroId: req.user.id
+      },
+      attributes: ["data", "pago"]
+    });
+
+    // 🔹 MAPA DE PAGOS (DATA NORMALIZADA)
+    const mapaPago = {};
+    totais.forEach(t => {
+      const dataFormatada = new Date(t.data)
+        .toISOString()
+        .split("T")[0];
+
+      mapaPago[dataFormatada] = t.pago;
+    });
+
+    // 🔹 RESULTADO FINAL (SEM QUEBRAR NADA)
     const resultado = lancamentos.map(l => {
       const diaria = Number(l.getDataValue("diaria")) || 0;
       const taxa = Number(l.getDataValue("taxa")) || 0;
@@ -305,10 +325,11 @@ routes.get("/totais/me", async (req, res) => {
       const vales = Number(l.getDataValue("vales")) || 0;
 
       return {
-        data: l.data,
+        data: l.data, // YYYY-MM-DD
         total: diaria + taxa + taxas10 - entregas - vales,
         qtd_entregas: entregas,
-        qtd_taxas_acima_10: taxas10
+        qtd_taxas_acima_10: taxas10,
+        pago: mapaPago[l.data] ?? false // ✅ CORRETO
       };
     });
 
@@ -318,6 +339,7 @@ routes.get("/totais/me", async (req, res) => {
     res.status(500).json({ erro: "Erro ao buscar dados do dashboard" });
   }
 });
+
 // ==============================
 // 💸 MARCAR COMO PAGO (ADMIN)
 // ==============================
