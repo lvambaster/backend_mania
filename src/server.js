@@ -1,35 +1,43 @@
 require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
+const bcrypt = require('bcryptjs')
 const { sequelize, Admin } = require('./models')
 const routes = require('./routes')
 
 const app = express()
 
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174']
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }))
+
+
 app.use(express.json())
 app.use(routes)
 
+sequelize.sync({ alter: true })
+  .then(async () => {
+    console.log('✅ Banco conectado ao Neon')
 
-sequelize.sync().then(async () => {
-  const bcrypt = require('bcryptjs')
-
-  const adminExistente = await Admin.findOne({
-    where: { login: 'admin' }
-  })
-
-  if (!adminExistente) {
-    const senhaHash = await bcrypt.hash('admin123', 10)
-    await Admin.create({
-      login: 'admin',
-      senha: senhaHash
+    const adminExistente = await Admin.findOne({
+      where: { login: 'admin' }
     })
-    console.log('Admin criado com sucesso')
-  }
 
-  app.listen(process.env.PORT, () =>
-    console.log('Servidor rodando na porta ' + process.env.PORT)
-  )
-})
+    if (!adminExistente) {
+      const senhaHash = await bcrypt.hash('admin123', 10)
+      await Admin.create({
+        login: 'admin',
+        senha: senhaHash
+      })
+      console.log('👤 Admin criado com sucesso')
+    }
+
+    app.listen(process.env.PORT || 3000, () => {
+      console.log(`🚀 Servidor rodando na porta ${process.env.PORT || 3000}`)
+    })
+  })
+  .catch(err => {
+    console.error('❌ Erro ao conectar no banco:', err)
+  })
