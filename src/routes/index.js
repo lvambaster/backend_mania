@@ -273,65 +273,56 @@ routes.get("/totais/me", async (req, res) => {
   try {
     const { inicio, fim } = req.query;
 
-    const whereTotal = {
+    const where = {
       MotoqueiroId: req.user.id
     };
 
+    // 📅 FILTRO OU ÚLTIMOS 7 DIAS
     if (inicio && fim) {
-      whereTotal.data = {
+      where.data = {
         [Op.between]: [inicio, fim]
+      };
+    } else {
+      where.data = {
+        [Op.gte]: moment().subtract(6, "days").format("YYYY-MM-DD")
       };
     }
 
-    // 🔹 1. BUSCA TOTAIS (VALOR + PAGO)
+    // 🔹 BUSCA TODOS OS TOTAIS
     const totais = await Total.findAll({
-      where: whereTotal,
-      attributes: ["data", "total", "pago"],
+      where,
       order: [["data", "ASC"]]
     });
 
-    // 🔹 2. BUSCA LANÇAMENTOS (SÓ MÉTRICAS)
-    const lancamentos = await Lancamento.findAll({
-      where: {
-        MotoqueiroId: req.user.id
-      },
-      attributes: [
-        "data",
-        [fn("SUM", col("qtd_entregas")), "qtd_entregas"],
-        [fn("SUM", col("qtd_taxas_acima_10")), "qtd_taxas_acima_10"]
-      ],
-      group: ["data"]
-    });
+    // 🔹 AGRUPA POR DATA (SEM SOMAR)
+    const mapa = {};
 
-    // 🔹 3. MAPA DE MÉTRICAS POR DATA
-    const mapaLancamentos = {};
-    lancamentos.forEach(l => {
-      const data = l.data;
-      mapaLancamentos[data] = {
-        qtd_entregas: Number(l.getDataValue("qtd_entregas")) || 0,
-        qtd_taxas_acima_10:
-          Number(l.getDataValue("qtd_taxas_acima_10")) || 0
-      };
-    });
-
-    // 🔹 4. RESULTADO FINAL (SEM DUPLICAR)
-    const resultado = totais.map(t => {
+    totais.forEach(t => {
       const data = t.data;
 
-      return {
-        data,
-        total: Number(t.total),
-        pago: t.pago,
-        qtd_entregas: mapaLancamentos[data]?.qtd_entregas || 0,
-        qtd_taxas_acima_10:
-          mapaLancamentos[data]?.qtd_taxas_acima_10 || 0
-      };
+      // se ainda não existe, cria
+      if (!mapa[data]) {
+        mapa[data] = {
+          data,
+          total: Number(t.total),
+          qtd_entregas: Number(t.qtd_entregas),
+          qtd_taxas_acima_10: Number(t.qtd_taxas_acima_10),
+          pago: Boolean(t.pago)
+        };
+      } else {
+        // 🔥 REGRA DO PAGO
+        if (t.pago === true) {
+          mapa[data].pago = true;
+        }
+      }
     });
+
+    const resultado = Object.values(mapa);
 
     res.json(resultado);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ erro: "Erro ao buscar dados do dashboard" });
+    res.status(500).json({ erro: "Erro no dashboard" });
   }
 });
 
