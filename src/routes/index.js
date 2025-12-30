@@ -283,6 +283,7 @@ routes.get("/totais/me", async (req, res) => {
       };
     }
 
+    // 1️⃣ SOMA DOS LANÇAMENTOS (como já está)
     const lancamentos = await Lancamento.findAll({
       where,
       attributes: [
@@ -297,6 +298,19 @@ routes.get("/totais/me", async (req, res) => {
       order: [["data", "ASC"]]
     });
 
+    // 2️⃣ BUSCA PAGOS / NÃO PAGOS
+    const totaisPagos = await Total.findAll({
+      where,
+      attributes: ["data", "pago"]
+    });
+
+    // 3️⃣ MAPA data → pago
+    const mapaPago = {};
+    totaisPagos.forEach(t => {
+      mapaPago[t.data.toISOString().split("T")[0]] = t.pago;
+    });
+
+    // 4️⃣ RESULTADO FINAL (SEM ALTERAR SUA LÓGICA)
     const resultado = lancamentos.map(l => {
       const diaria = Number(l.getDataValue("diaria")) || 0;
       const taxa = Number(l.getDataValue("taxa")) || 0;
@@ -304,11 +318,14 @@ routes.get("/totais/me", async (req, res) => {
       const taxas10 = Number(l.getDataValue("qtd_taxas_acima_10")) || 0;
       const vales = Number(l.getDataValue("vales")) || 0;
 
+      const dataISO = l.data.toISOString().split("T")[0];
+
       return {
-        data: l.data,
+        data: dataISO,
         total: diaria + taxa + taxas10 - entregas - vales,
         qtd_entregas: entregas,
-        qtd_taxas_acima_10: taxas10
+        qtd_taxas_acima_10: taxas10,
+        pago: mapaPago[dataISO] ?? false // 🔥 AQUI
       };
     });
 
