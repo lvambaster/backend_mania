@@ -266,35 +266,43 @@ routes.get('/totais', async (req, res) => {
   res.json(totais)
 })
 
+
 // ==============================
-// 💰 TOTAIS — MOTOQUEIRO LOGADO (CORRIGIDO)
+// 💰 TOTAIS — MOTOQUEIRO LOGADO
 // ==============================
 routes.get("/totais/me", async (req, res) => {
   try {
     const { inicio, fim } = req.query;
 
-    const whereTotal = {
+    const where = {
       MotoqueiroId: req.user.id
     };
 
+    // 📅 FILTRO DE DATA (PADRÃO = ÚLTIMOS 7 DIAS)
     if (inicio && fim) {
-      whereTotal.data = {
+      where.data = {
         [Op.between]: [inicio, fim]
+      };
+    } else {
+      const hoje = new Date();
+      const seteDias = new Date();
+      seteDias.setDate(hoje.getDate() - 6);
+
+      where.data = {
+        [Op.gte]: seteDias.toISOString().split("T")[0]
       };
     }
 
-    // 🔹 1. BUSCA TOTAIS (VALOR + PAGO)
+    // 🔹 1️⃣ BUSCA TOTAIS (VALOR + PAGO)
     const totais = await Total.findAll({
-      where: whereTotal,
+      where,
       attributes: ["data", "total", "pago"],
       order: [["data", "ASC"]]
     });
 
-    // 🔹 2. BUSCA LANÇAMENTOS (SÓ MÉTRICAS)
+    // 🔹 2️⃣ BUSCA MÉTRICAS (MESMO FILTRO!)
     const lancamentos = await Lancamento.findAll({
-      where: {
-        MotoqueiroId: req.user.id
-      },
+      where,
       attributes: [
         "data",
         [fn("SUM", col("qtd_entregas")), "qtd_entregas"],
@@ -303,7 +311,7 @@ routes.get("/totais/me", async (req, res) => {
       group: ["data"]
     });
 
-    // 🔹 3. MAPA DE MÉTRICAS POR DATA
+    // 🔹 3️⃣ MAPA DE MÉTRICAS POR DATA
     const mapaLancamentos = {};
     lancamentos.forEach(l => {
       const data = l.data;
@@ -314,14 +322,14 @@ routes.get("/totais/me", async (req, res) => {
       };
     });
 
-    // 🔹 4. RESULTADO FINAL (SEM DUPLICAR)
+    // 🔹 4️⃣ RESULTADO FINAL (SEM DUPLICAR)
     const resultado = totais.map(t => {
       const data = t.data;
 
       return {
         data,
-        total: Number(t.total),
-        pago: t.pago,
+        total: Number(t.total) || 0,
+        pago: Boolean(t.pago),
         qtd_entregas: mapaLancamentos[data]?.qtd_entregas || 0,
         qtd_taxas_acima_10:
           mapaLancamentos[data]?.qtd_taxas_acima_10 || 0
@@ -330,7 +338,7 @@ routes.get("/totais/me", async (req, res) => {
 
     res.json(resultado);
   } catch (err) {
-    console.error(err);
+    console.error("ERRO TOTAIS:", err);
     res.status(500).json({ erro: "Erro ao buscar dados do dashboard" });
   }
 });
