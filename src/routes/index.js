@@ -273,19 +273,27 @@ routes.get("/totais/me", async (req, res) => {
   try {
     const { inicio, fim } = req.query;
 
-    const where = {
+    const whereLancamento = {
+      MotoqueiroId: req.user.id
+    };
+
+    const whereTotal = {
       MotoqueiroId: req.user.id
     };
 
     if (inicio && fim) {
-      where.data = {
+      whereLancamento.data = {
+        [Op.between]: [inicio, fim]
+      };
+
+      whereTotal.data = {
         [Op.between]: [inicio, fim]
       };
     }
 
-    // 1️⃣ SOMA DOS LANÇAMENTOS (como já está)
+    // 🔹 AGRUPA DADOS DOS LANÇAMENTOS
     const lancamentos = await Lancamento.findAll({
-      where,
+      where: whereLancamento,
       attributes: [
         "data",
         [fn("SUM", col("diaria")), "diaria"],
@@ -298,19 +306,19 @@ routes.get("/totais/me", async (req, res) => {
       order: [["data", "ASC"]]
     });
 
-    // 2️⃣ BUSCA PAGOS / NÃO PAGOS
-    const totaisPagos = await Total.findAll({
-      where,
+    // 🔹 BUSCA STATUS DE PAGAMENTO
+    const totais = await Total.findAll({
+      where: whereTotal,
       attributes: ["data", "pago"]
     });
 
-    // 3️⃣ MAPA data → pago
+    // 🔹 MAPA PARA ACESSO RÁPIDO
     const mapaPago = {};
-    totaisPagos.forEach(t => {
-      mapaPago[t.data.toISOString().split("T")[0]] = t.pago;
+    totais.forEach(t => {
+      mapaPago[t.data] = t.pago;
     });
 
-    // 4️⃣ RESULTADO FINAL (SEM ALTERAR SUA LÓGICA)
+    // 🔹 RESULTADO FINAL
     const resultado = lancamentos.map(l => {
       const diaria = Number(l.getDataValue("diaria")) || 0;
       const taxa = Number(l.getDataValue("taxa")) || 0;
@@ -318,14 +326,12 @@ routes.get("/totais/me", async (req, res) => {
       const taxas10 = Number(l.getDataValue("qtd_taxas_acima_10")) || 0;
       const vales = Number(l.getDataValue("vales")) || 0;
 
-      const dataISO = l.data.toISOString().split("T")[0];
-
       return {
-        data: dataISO,
+        data: l.data,
         total: diaria + taxa + taxas10 - entregas - vales,
         qtd_entregas: entregas,
         qtd_taxas_acima_10: taxas10,
-        pago: mapaPago[dataISO] ?? false // 🔥 AQUI
+        pago: mapaPago[l.data] ?? false
       };
     });
 
