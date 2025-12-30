@@ -269,42 +269,32 @@ routes.get('/totais', async (req, res) => {
 // ==============================
 // 💰 TOTAIS — MOTOQUEIRO LOGADO
 // ==============================
-router.get("/totais/me", async (req, res) => {
-  const motoqueiroId = req.user.id;
-  const { inicio, fim } = req.query;
-
-  const where = { MotoqueiroId: motoqueiroId };
-
-  if (inicio && fim) {
-    where.data = {
-      [Op.between]: [inicio, fim]
-    };
-  }
-
+routes.get("/totais/me", async (req, res) => {
   try {
-    const totais = await Lancamento.findAll({
+    const { inicio, fim } = req.query;
+
+    const where = {
+      MotoqueiroId: req.user.id
+    };
+
+    if (inicio && fim) {
+      where.data = {
+        [Op.between]: [inicio, fim]
+      };
+    }
+
+    const totais = await Total.findAll({
+      where,
       attributes: [
         "data",
-        [fn("SUM", col("diaria")), "total_diaria"],
-        [fn("SUM", col("taxa")), "total_taxa"],
-        [fn("SUM", col("qtd_entregas")), "qtd_entregas"],
-        [fn("SUM", col("qtd_taxas_acima_10")), "qtd_taxas_acima_10"]
+        "total",
+        "qtd_entregas",
+        "qtd_taxas_acima_10"
       ],
-      where,
-      group: ["data"],
       order: [["data", "ASC"]]
     });
 
-    const formatado = totais.map(t => ({
-      data: t.data,
-      total:
-        Number(t.getDataValue("total_diaria")) +
-        Number(t.getDataValue("total_taxa")),
-      qtd_entregas: Number(t.getDataValue("qtd_entregas")),
-      qtd_taxas_acima_10: Number(t.getDataValue("qtd_taxas_acima_10"))
-    }));
-
-    res.json(formatado);
+    res.json(totais);
   } catch (err) {
     console.error(err);
     res.status(500).json({ erro: "Erro ao buscar totais" });
